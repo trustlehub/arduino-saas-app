@@ -3,5 +3,6 @@
         "activityBar.background": "#3E2630",
         "titleBar.activeBackground": "#573643",
         "titleBar.activeForeground": "#FCFAFA"
-    }
+    },
+    "CodeGPT.apiKey": "CodeGPT Plus Beta"
 }

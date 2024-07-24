@@ -148,6 +148,7 @@ export default function OpenAIAssistant({
                     <button
                         disabled
                         className="bg-blue-500 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                        aria-label="Loading spinner"
                     >
                         <OpenAISpinner />
                     </button>
@@ -155,6 +156,7 @@ export default function OpenAIAssistant({
                     <button
                         disabled={prompt.length == 0}
                         className="bg-blue-500 hover:bg-blue-700 cursor-pointer text-white font-bold p-2 rounded-full focus:outline-none focus:shadow-outline absolute right-1 top-1"
+                         aria-label="Send message"
                     >
                         <AiOutlineSend />
                     </button>
