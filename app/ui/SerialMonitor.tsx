@@ -20,8 +20,8 @@ const Button: React.FC<ButtonProps> = ({ text, onClick }) => (
 const SerialMonitor: React.FC = () => {
     const [isAutoScroll, setIsAutoScroll] = useState(true); // State to control auto-scrolling
     const dataRef = useRef<HTMLDivElement | null>(null);
-
-    const { data, clearData } = useArduinoContext();
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const { data, clearData, rawText ,writeToSerial} = useArduinoContext();
 
     // Function to copy data to clipboard
     const copyData = () => {
@@ -65,12 +65,23 @@ const SerialMonitor: React.FC = () => {
                     className="text-2xl overflow-y-auto px-8 pb-8"
                     onScroll={handleScroll} // Listen to scroll events
                 >
+                    {rawText}
                     {data.map((number, index) => (
                         <React.Fragment key={index}>
                             {number.toFixed(2)}
                             <br />
                         </React.Fragment>
                     ))}
+                </div>
+                <div className="flex">
+                    <input className="bg-neutral-700 outline-none px-3 py-2" ref={inputRef}/>
+                    <div onClick={async ()=>{
+                        await writeToSerial(inputRef.current?.value || "")        
+                        if (inputRef.current) {
+                           inputRef.current.value = ""
+                        }
+                    }} 
+                        className="hover:cursor-pointer rounded-md px-3 py-2 bg-blue-700 text-white">Send</div>
                 </div>
             </div>
         </aside>

@@ -11,6 +11,7 @@ const ArduinoConnect: React.FC = () => {
             <button onClick={connectArduino} disabled={!!port}>
                 Connect Port
             </button>
+            {port?.getInfo().serialNumber}
             <button onClick={disconnectArduino} disabled={!port}>
                 Disconnect
             </button>
