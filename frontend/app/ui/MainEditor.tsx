@@ -1,9 +1,13 @@
+// @ts-nocheck
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import Editor, { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import init, { format } from "@wasm-fmt/clang-format";
 import { useEditorContext } from "./EditorProvider";
+import dynamic from 'next/dynamic'
+
+//import Av
 
 const OnLoadCode = `/*
   Blink
@@ -37,14 +41,64 @@ const EditorButton: React.FC<EditorButtonProps> = ({ children, ...props }) => (
 
 const MainEditor: React.FC = () => {
     const { formatCode, editor, setEditor } = useEditorContext();
+    const [compiledContents, setcompiledContents] = useState<ArrayBuffer | null>(null)
+
+    const compile = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/compile", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            code: editor?.getValue(),
+            board: 'arduino:avr:uno',
+          }),
+        });
+
+        if (!response.ok) {
+          const errorMessage = await response.text();
+          throw new Error(errorMessage);
+        }
+
+      // Step 2: Convert the Blob to an ArrayBuffer
+      const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      setcompiledContents(arrayBuffer)
+      console.log("compiled. ")
+
+      } catch (error) {
+        console.error("Error during compilation:", error);
+      }
+    };
+    const upload = async () =>{
+      const AvrgirlArduino = (await import('../utils/avrgirl')).default
+      if (AvrgirlArduino != null) {
+        const avrgirl = new AvrgirlArduino({
+          board: 'uno',
+          debug: true
+        });
+
+
+        avrgirl.flash(compiledContents, error => {
+          if (error) {
+            console.error(error);
+          } else {
+            console.info("flash successful");
+          }
+        });
+      }
+
+    }
+
 
     return (
         <main className="flex flex-col w-[56%] max-md:w-full">
             <div className="flex flex-col grow justify-center self-stretch w-full text-white bg-[#1e1e1e] rounded-[16px] h-full overflow-hidden">
                 <div className="flex relative flex-col w-full h-full">
                     <div className="flex relative gap-2.5 p-2.5 text-base whitespace-nowrap max-md:flex-wrap max-md:pl-5 self-end">
-                        <EditorButton onClick={() => {}}>Compile</EditorButton>
-                        <EditorButton onClick={() => {}}>Upload</EditorButton>
+                        <EditorButton onClick={() => {compile()}}>Compile</EditorButton>
+                        <EditorButton onClick={() => {upload()}}>Upload</EditorButton>
                         <EditorButton onClick={() => {
                             console.log(editor?.getValue())
                         }}>test</EditorButton>
