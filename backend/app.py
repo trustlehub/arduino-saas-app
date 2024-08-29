@@ -1,12 +1,21 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from fastapi.responses import FileResponse
-import subprocess
+import json
 import os
+import subprocess
 import uuid
+from queue import Queue
+from typing import AsyncGenerator
+
+import openai
+from fastapi import FastAPI, BackgroundTasks, Response
+from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 app = FastAPI()
+client = openai.AsyncOpenAI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
@@ -15,11 +24,73 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+
 class ArduinoCode(BaseModel):
     code: str
     board: str
 
-@app.post("/compile")
+
+class ChatRequest(BaseModel):
+    assistantId: str | None
+    threadId: str
+    content: str
+    code: str | None
+
+
+# Function to stream data from OpenAI API
+# A helper function that runs the OpenAI stream in a separate thread
+
+@app.post("/openai-assistant")
+async def assistant(request: ChatRequest, background_tasks: BackgroundTasks):
+    # Parse incoming request data
+    assistant_id = request.assistantId
+    thread_id = request.threadId
+    content = request.content
+    code = request.code
+
+    # Add user message to the thread
+    await client.beta.threads.messages.create(thread_id,
+                                              role="user",
+                                              content=content
+                                              )
+
+    if code:
+        await client.beta.threads.messages.create(thread_id,
+                                                  role="user",
+                                                  content=f"Here is my most up-to-date code from the inline code-editor.\n{code}"
+                                                  )
+
+    # Generator to yield responses from the queue
+    async def response_generator() -> AsyncGenerator[str, None]:
+        try:
+            stream = await client.beta.threads.runs.create(
+                thread_id=thread_id,
+                assistant_id=assistant_id,
+                stream=True,
+            )
+            # Stream responses and add them to the queue
+            async for chunk in stream:
+                try:
+                    # text = chunk.data.content.get("text","").get('value', '')
+                    # print(chunk.data.delta.content[])
+                    for line in chunk.data.delta.content:
+                        yield line.text.value
+                except Exception as e:
+                    pass
+        except:
+            yield "An error occurred. Please try again."
+    return StreamingResponse(response_generator(), media_type="application/json", )
+
+
+@app.post("/openai-assistant/create-thread")
+async def create_thread():
+    thread = await client.beta.threads.create()
+    return Response(json.dumps({
+        "threadId": thread.id
+    }), media_type="application/json")
+
+
+@app.post("api/compile")
 async def compile_code(arduino_code: ArduinoCode):
     # Create a temporary directory to save the code
     # temp_dir = f"/tmp/arduino_{uuid.uuid4()}"

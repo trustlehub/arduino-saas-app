@@ -1,6 +1,7 @@
 "use client";
 
 import React, {createContext, useContext, useState, useEffect, ReactNode} from "react";
+import {useEditorContext} from "@/app/ui/EditorProvider";
 
 interface ArduinoContextType {
     data: number[];
@@ -10,6 +11,8 @@ interface ArduinoContextType {
     connectArduino: () => Promise<void>;
     disconnectArduino: () => Promise<void>;
     writeToSerial: (data: string) => Promise<void>;
+    upload: (data: string) => Promise<void>;
+    compile: (data: string) => Promise<void>;
 }
 
 const ArduinoContext = createContext<ArduinoContextType | undefined>(undefined);
@@ -22,6 +25,9 @@ export const ArduinoProvider: React.FC<ArduinoProviderProps> = ({children}) => {
     const [data, setData] = useState<number[]>([]);
     const [rawText, setRawText] = useState<string>("");
     const [port, setPort] = useState<SerialPort | null>(null);
+    const [aborter, setAborter] = useState<AbortController>()
+    const [readerClosed, setReaderClosed] = useState<any>()
+    const [compiledContents, setcompiledContents] = useState<ArrayBuffer | null>(null)
     const maxDataPoints = 100;
 
     // Function to write to serial
@@ -41,16 +47,21 @@ export const ArduinoProvider: React.FC<ArduinoProviderProps> = ({children}) => {
             try {
                 const newPort = await navigator.serial.requestPort();
                 await newPort.open({baudRate: 9600});
+                const a = new AbortController()
                 setPort(newPort);
                 // readData(newPort);
+                const decoder = new TextDecoder();
                 const appendStream = new WritableStream({
                     write(chunk) {
                         setRawText((prev) => {
-                            return prev.toString() + chunk.toString();
+                            const txt = decoder.decode(chunk);
+                            return prev.toString() + txt.toString();
                         });
+                        
                     }
                 })
-                await newPort.readable.pipeThrough(new TextDecoderStream()).pipeTo(appendStream)
+                setAborter(a)
+                setReaderClosed(newPort.readable.pipeTo(appendStream, a))
             } catch (error) {
                 console.error('There was an error opening the serial port:', error);
             }
@@ -58,44 +69,76 @@ export const ArduinoProvider: React.FC<ArduinoProviderProps> = ({children}) => {
             console.error('Web Serial API not supported in this browser.');
         }
     };
-    // readData is not required
-
-    // Function to read data from the Arduino
-    // const readData = async (serialPort: SerialPort) => {
-    //     const textDecoder = new TextDecoderStream();
-    //     const readableStreamClosed = serialPort.readable.pipeTo(textDecoder.writable); 
-    //     const reader = textDecoder.readable.getReader();
-    //
-    //     try {
-    //         while (true) {
-    //             const {value, done} = await reader.read();
-    //             if (done) {
-    //                 reader.releaseLock();
-    //                 break;
-    //             }
-    //             const newDataPoint = parseFloat(value);
-    //             if (!isNaN(newDataPoint)) {
-    //                 setData((prevData) => {
-    //                     const newData = [...prevData, newDataPoint];
-    //                     return newData.length > maxDataPoints ? newData.slice(newData.length - maxDataPoints) : newData;
-    //                 });
-    //             }
-    //         }
-    //     } catch (error) {
-    //         console.error('Read error:', error);
-    //     }
-    // };
-    //
 
     // Function to disconnect from the Arduino
     const disconnectArduino = async () => {
         if (port) {
+            aborter?.abort()
+            await readerClosed.catch(()=>{})
             await port.close();
             setPort(null);
             clearData();
         }
     };
 
+    const compile = async (text: string): Promise<void> => {
+        try {
+            const response = await fetch("http://localhost:8000/compile", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    code: text,
+                    board: 'arduino:avr:uno',
+                }),
+            });
+
+            if (!response.ok) {
+                const errorMessage = await response.text();
+                throw new Error(errorMessage);
+            }
+
+            // Step 2: Convert the Blob to an ArrayBuffer
+            const blob = await response.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            setcompiledContents(arrayBuffer)
+            return Promise.resolve()
+
+        } catch (error) {
+            return Promise.reject(error)
+        }
+    };
+    const upload = async (): Promise<void> => {
+        disconnectArduino()
+        const AvrgirlArduino = (await import('../utils/avrgirl')).default
+        if (!compiledContents){
+            setRawText((p)=>p + "\n" +"Please compile first!")
+            return Promise.reject("Not compiled yet!")
+        }
+        if (AvrgirlArduino != null && compiledContents) {
+            const avrgirl = new AvrgirlArduino({
+                board: 'uno',
+                debug: (log: string) =>{
+                    setRawText((prev)=>{
+                        return prev + "\n" + log
+                    })
+                },
+            });
+
+            // @ts-ignore
+            avrgirl.flash(compiledContents, error => {
+                if (error) {
+                    console.error(error);
+                    return Promise.reject(error)
+                } else {
+                    console.info("flash successful");
+                    return Promise.resolve();
+                }
+            });
+        }
+
+    }
     // Function to clear data
     const clearData = () => {
         setData([]);
@@ -104,7 +147,7 @@ export const ArduinoProvider: React.FC<ArduinoProviderProps> = ({children}) => {
 
     return (
         <ArduinoContext.Provider
-            value={{clearData, connectArduino, data, disconnectArduino, port, rawText, writeToSerial}}>
+            value={{clearData, connectArduino, data, disconnectArduino, port, rawText, writeToSerial, upload, compile}}>
             {children}
         </ArduinoContext.Provider>
     );

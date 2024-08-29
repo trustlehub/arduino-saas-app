@@ -1,11 +1,11 @@
 "use client";
 
-import { AssistantStream } from "openai/lib/AssistantStream";
-import { useState, useRef, useEffect } from "react";
-import { AiOutlineUser, AiOutlineRobot, AiOutlineSend } from "react-icons/ai";
+import {AssistantStream} from "openai/lib/AssistantStream";
+import {useState, useRef, useEffect} from "react";
+import {AiOutlineUser, AiOutlineRobot, AiOutlineSend} from "react-icons/ai";
 import Markdown from "react-markdown";
-import { useEditorContext } from "./EditorProvider";
-import { ChatRequestBody } from "../api/openai-assistant/route";
+import {useEditorContext} from "./EditorProvider";
+import {ChatRequestBody} from "../api/openai-assistant/route";
 
 interface Message {
     id: string;
@@ -15,9 +15,9 @@ interface Message {
 }
 
 export default function OpenAIAssistant({
-    assistantId = "",
-    greeting = "I am a helpful chat assistant. How can I help you?",
-}) {
+                                            assistantId = "",
+                                            greeting = "I am a helpful chat assistant. How can I help you?",
+                                        }) {
     const [isLoading, setIsLoading] = useState(false);
     const [threadId, setThreadId] = useState<string | null>(null);
     const [prompt, setPrompt] = useState("");
@@ -30,7 +30,7 @@ export default function OpenAIAssistant({
     });
     const messageId = useRef(0);
 
-    const { editor } = useEditorContext();
+    const {editor} = useEditorContext();
 
     // set default greeting Message
     const greetingMessage = {
@@ -66,13 +66,27 @@ export default function OpenAIAssistant({
             },
         ]);
         setPrompt("");
+        let _threadId = null || threadId 
+        if (!threadId){
+            // creates a thread if there is none
+            const threadResponse = await fetch('http://localhost:8000/openai-assistant/create-thread',{
+                method: 'POST'
+            })
+            _threadId = (await threadResponse.json()).threadId
+            console.log(_threadId)
+            setThreadId(_threadId)
+            
+        }
 
         // post new message to server and stream OpenAI Assistant response
-        const response = await fetch("/api/openai-assistant", {
+        const response = await fetch("http://localhost:8000/openai-assistant", {
             method: "POST",
+            headers: {
+                'Content-Type': "application/json"
+            },
             body: JSON.stringify({
                 assistantId: assistantId,
-                threadId: threadId,
+                threadId: _threadId,
                 content: prompt,
                 code: editor ? editor.getValue() : null,
             } satisfies ChatRequestBody),
@@ -81,43 +95,42 @@ export default function OpenAIAssistant({
         if (!response.body) {
             return;
         }
-        const runner = AssistantStream.fromReadableStream(response.body);
 
-        runner.on("messageCreated", (message) => {
-            setThreadId(message.thread_id);
-        });
+        async function readAllChunks(readableStream: ReadableStream) {
+            const reader = readableStream.getReader();
+            let finalText = "";
+            let decoder = new TextDecoder()
+            let done, value;
+            while (!done) {
+                ({value, done} = await reader.read());
+                if (done) {
+                    messageId.current++;
+                    setMessages((prevMessages) => [
+                        ...prevMessages,
+                        {
+                            id: messageId.current.toString(),
+                            role: "assistant",
+                            content: finalText,
+                            createdAt: new Date(),
+                        },
+                    ]);
 
-        runner.on("textDelta", (_delta, contentSnapshot) => {
-            const newStreamingMessage = {
-                ...streamingMessage,
-                content: contentSnapshot.value,
-            };
-            setStreamingMessage(newStreamingMessage);
-        });
+                    setIsLoading(false);
+                    return finalText;
+                }
+                const text = decoder.decode(value)
+                finalText += text
+                const newStreamingMessage = {
+                    ...streamingMessage,
+                    content: finalText,
+                };
+                setStreamingMessage(newStreamingMessage);
 
-        runner.on("messageDone", (message) => {
-            // get final message content
-            const finalContent = message.content[0].type == "text" ? message.content[0].text.value : "";
+            }
+        }
+        
+        await readAllChunks(response.body)
 
-            // add assistant message to list of messages
-            messageId.current++;
-            setMessages((prevMessages) => [
-                ...prevMessages,
-                {
-                    id: messageId.current.toString(),
-                    role: "assistant",
-                    content: finalContent,
-                    createdAt: new Date(),
-                },
-            ]);
-
-            // remove busy indicator
-            setIsLoading(false);
-        });
-
-        runner.on("error", (error) => {
-            console.error(error);
-        });
     }
 
     // handles changes to the prompt input field
@@ -128,11 +141,11 @@ export default function OpenAIAssistant({
     return (
         <>
             <div className="flex gap-4 flex-col relative overflow-y-auto">
-                <OpenAIAssistantMessage message={greetingMessage} />
+                <OpenAIAssistantMessage message={greetingMessage}/>
                 {messages.map((m) => (
-                    <OpenAIAssistantMessage key={m.id} message={m} />
+                    <OpenAIAssistantMessage key={m.id} message={m}/>
                 ))}
-                {isLoading && <OpenAIAssistantMessage message={streamingMessage} />}
+                {isLoading && <OpenAIAssistantMessage message={streamingMessage}/>}
             </div>
             <form onSubmit={handleSubmit} className="flex relative">
                 <input
@@ -150,15 +163,15 @@ export default function OpenAIAssistant({
                         className="bg-blue-500 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                         aria-label="Loading spinner"
                     >
-                        <OpenAISpinner />
+                        <OpenAISpinner/>
                     </button>
                 ) : (
                     <button
                         disabled={prompt.length == 0}
                         className="bg-blue-500 hover:bg-blue-700 cursor-pointer text-white font-bold p-2 rounded-full focus:outline-none focus:shadow-outline absolute right-1 top-1"
-                         aria-label="Send message"
+                        aria-label="Send message"
                     >
-                        <AiOutlineSend />
+                        <AiOutlineSend/>
                     </button>
                 )}
             </form>
@@ -166,15 +179,16 @@ export default function OpenAIAssistant({
     );
 }
 
-export function OpenAIAssistantMessage({ message }: { message: Message }) {
+export function OpenAIAssistantMessage({message}: { message: Message }) {
     function displayRole(roleName: string) {
         switch (roleName) {
             case "user":
-                return <AiOutlineUser />;
+                return <AiOutlineUser/>;
             case "assistant":
-                return <AiOutlineRobot />;
+                return <AiOutlineRobot/>;
         }
     }
+
     return (
         <div
             className={`flex rounded text-[#ececec] text-center ${
