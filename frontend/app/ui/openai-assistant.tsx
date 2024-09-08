@@ -66,20 +66,23 @@ export default function OpenAIAssistant({
             },
         ]);
         setPrompt("");
-        let _threadId = null || threadId 
-        if (!threadId){
+        let _threadId = null || threadId
+        if (!threadId) {
             // creates a thread if there is none
-            const threadResponse = await fetch('http://localhost:8000/openai-assistant/create-thread',{
+            const threadResponse = await fetch(process.env.NEXT_PUBLIC_BACKEND_BASEURL + 
+                '/openai-assistant/create-thread', {
                 method: 'POST'
             })
             _threadId = (await threadResponse.json()).threadId
             console.log(_threadId)
             setThreadId(_threadId)
-            
+
         }
 
         // post new message to server and stream OpenAI Assistant response
-        const response = await fetch("http://localhost:8000/openai-assistant", {
+        const response = await fetch(
+            process.env.NEXT_PUBLIC_BACKEND_BASEURL +
+            "/openai-assistant", {
             method: "POST",
             headers: {
                 'Content-Type': "application/json"
@@ -128,7 +131,7 @@ export default function OpenAIAssistant({
 
             }
         }
-        
+
         await readAllChunks(response.body)
 
     }

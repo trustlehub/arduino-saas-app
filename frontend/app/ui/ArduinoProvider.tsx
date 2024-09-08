@@ -83,7 +83,9 @@ export const ArduinoProvider: React.FC<ArduinoProviderProps> = ({children}) => {
 
     const compile = async (text: string): Promise<void> => {
         try {
-            const response = await fetch("http://localhost:8000/compile", {
+            const response = await fetch(
+                process.env.NEXT_PUBLIC_BACKEND_BASEURL +
+                "/compile", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

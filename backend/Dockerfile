@@ -12,6 +12,7 @@ RUN apk --no-cache add curl
 RUN curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/bin sh
 RUN apk add libc6-compat
 RUN arduino-cli core install arduino:avr
+RUN arduino-cli lib install "Sensirion I2C SDP"
 # Copy the rest of the application
 COPY . .
 
